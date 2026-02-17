@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compiler Knowledge Graph — Dialectical Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --bg2: #0f1318;
+    --panel: #13181f;
+    --border: #1e2630;
+    --text: #c8d8e8;
+    --muted: #5a7080;
+    --accent: #00e5ff;
+    --accent2: #ff6b35;
+    --accent3: #a8ff78;
+    --accent4: #ffd166;
+    --danger: #ff4757;
+    --depth0: #00e5ff;
+    --depth1: #a78bfa;
+    --relation-r: #00e5ff;
+    --relation-u: #a8ff78;
+    --relation-req: #ffd166;
+    --relation-p: #ff6b35;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    letter-spacing: -0.5px;
+    color: var(--accent);
+  }
+
+  .logo span { color: var(--text); }
+
+  .stats {
+    display: flex;
+    gap: 24px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .stats b { color: var(--accent); }
+
+  /* ── MAIN LAYOUT ── */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    width: 300px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .sidebar-section {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+  }
+
+  .sidebar-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  /* filters */
+  .filter-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 4px 0;
+  }
+
+  .filter-dot {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .filter-label {
+    font-size: 11px;
+    color: var(--text);
+  }
+
+  .filter-count {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  input[type="checkbox"] {
+    appearance: none;
+    width: 14px; height: 14px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  input[type="checkbox"]:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  input[type="checkbox"]:checked::after {
+    content: '✓';
+    position: absolute;
+    font-size: 9px;
+    color: var(--bg);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  /* search */
+  .search-box {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    outline: none;
+  }
+
+  .search-box:focus { border-color: var(--accent); }
+  .search-box::placeholder { color: var(--muted); }
+
+  /* info panel */
+  .info-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .info-empty {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.8;
+    padding-top: 8px;
+  }
+
+  .info-node-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 4px;
+    line-height: 1.3;
+  }
+
+  .info-depth {
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .relation-group {
+    margin-bottom: 14px;
+  }
+
+  .relation-label {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+
+  .relation-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    font-size: 11px;
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+
+  .relation-item:hover { color: var(--accent); }
+
+  .conf-bar {
+    width: 30px;
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .conf-fill {
+    position: absolute;
+    left: 0; top: 0;
+    height: 100%;
+    border-radius: 1px;
+  }
+
+  /* contradictions badge */
+  .contra-badge {
+    background: var(--danger);
+    color: white;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 2px;
+    font-weight: 600;
+  }
+
+  .contra-item {
+    background: rgba(255,71,87,0.07);
+    border: 1px solid rgba(255,71,87,0.2);
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    font-size: 10px;
+    line-height: 1.6;
+  }
+
+  .contra-concept {
+    color: var(--danger);
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .contra-pair {
+    color: var(--muted);
+  }
+
+  .contra-pair span {
+    color: var(--text);
+    display: block;
+    padding-left: 8px;
+  }
+
+  /* ── GRAPH AREA ── */
+  .graph-area {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .node circle {
+    cursor: pointer;
+    transition: filter 0.2s;
+  }
+
+  .node circle:hover {
+    filter: brightness(1.4);
+  }
+
+  .node text {
+    pointer-events: none;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    fill: var(--text);
+  }
+
+  .link {
+    stroke-opacity: 0.4;
+    fill: none;
+  }
+
+  .link.highlighted { stroke-opacity: 0.9; }
+
+  .node.faded circle { opacity: 0.15; }
+  .node.faded text { opacity: 0.15; }
+  .link.faded { stroke-opacity: 0.05; }
+
+  /* ── LEGEND ── */
+  .legend {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-size: 10px;
+  }
+
+  .legend-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 5px;
+    color: var(--text);
+  }
+
+  .legend-line {
+    width: 24px;
+    height: 2px;
+    border-radius: 1px;
+  }
+
+  /* ── TOOLTIP ── */
+  .tooltip {
+    position: absolute;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 11px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    max-width: 220px;
+    z-index: 100;
+  }
+
+  /* ── LOADING ── */
+  .loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    z-index: 50;
+    gap: 12px;
+  }
+
+  .loading-text {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    color: var(--muted);
+  }
+
+  .spinner {
+    width: 32px; height: 32px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── CONTROLS ── */
+  .controls {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .ctrl-btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .ctrl-btn:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Compiler<span>KG</span> — Dialectical Explorer</div>
+  <div class="stats" id="stats">
+    <span>Loading...</span>
+  </div>
+</header>
+
+<div class="main">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">Search</div>
+      <input class="search-box" id="searchBox" placeholder="Search concepts..." type="text">
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">Relations</div>
+      <div class="filter-row" id="relationFilters">
+        <label class="filter-item">
+          <input type="checkbox" checked data-rel="RelatedTo">
+          <div class="filter-dot" style="background:var(--relation-r)"></div>
+          <span class="filter-label">RelatedTo</span>
+          <span class="filter-count" id="count-RelatedTo">—</span>
+        </label>
+        <label class="filter-item">
+          <input type="checkbox" checked data-rel="UsedFor">
+          <div class="filter-dot" style="background:var(--relation-u)"></div>
+          <span class="filter-label">UsedFor</span>
+          <span class="filter-count" id="count-UsedFor">—</span>
+        </label>
+        <label class="filter-item">
+          <input type="checkbox" checked data-rel="Requires">
+          <div class="filter-dot" style="background:var(--relation-req)"></div>
+          <span class="filter-label">Requires</span>
+          <span class="filter-count" id="count-Requires">—</span>
+        </label>
+        <label class="filter-item">
+          <input type="checkbox" checked data-rel="Produces">
+          <div class="filter-dot" style="background:var(--relation-p)"></div>
+          <span class="filter-label">Produces</span>
+          <span class="filter-count" id="count-Produces">—</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">
+        Contradictions
+        <span class="contra-badge" id="contraCount">0</span>
+      </div>
+      <div id="contradictionsList" style="max-height:140px;overflow-y:auto;scrollbar-width:thin">
+        <div class="info-empty">Loading...</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section" style="border-bottom:none">
+      <div class="sidebar-title">Selected Node</div>
+    </div>
+    <div class="info-panel" id="infoPanel">
+      <div class="info-empty">Click any node to explore its relations and connections.</div>
+    </div>
+  </div>
+
+  <!-- GRAPH -->
+  <div class="graph-area" id="graphArea">
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div class="loading-text">Loading knowledge graph...</div>
+    </div>
+
+    <svg id="svg"></svg>
+
+    <div class="controls">
+      <button class="ctrl-btn" onclick="resetZoom()">⊡ Reset</button>
+      <button class="ctrl-btn" onclick="toggleLabels()">⊕ Labels</button>
+    </div>
+
+    <div class="legend">
+      <div class="legend-title">Relations</div>
+      <div class="legend-row"><div class="legend-line" style="background:var(--relation-r)"></div> RelatedTo</div>
+      <div class="legend-row"><div class="legend-line" style="background:var(--relation-u)"></div> UsedFor</div>
+      <div class="legend-row"><div class="legend-line" style="background:var(--relation-req)"></div> Requires</div>
+      <div class="legend-row"><div class="legend-line" style="background:var(--relation-p)"></div> Produces</div>
+      <div style="margin-top:8px" class="legend-title">Depth</div>
+      <div class="legend-row"><div style="width:10px;height:10px;border-radius:50%;background:var(--depth0)"></div> Seed (0)</div>
+      <div class="legend-row"><div style="width:10px;height:10px;border-radius:50%;background:var(--depth1)"></div> Expanded (1)</div>
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+  </div>
+</div>
+
+<script>
+const DATA_URL = "https://raw.githubusercontent.com/qram9/compiler_studies/refs/heads/main/qwen_extraction_results.json";
+
+const REL_COLORS = {
+  RelatedTo: "#00e5ff",
+  UsedFor:   "#a8ff78",
+  Requires:  "#ffd166",
+  Produces:  "#ff6b35"
+};
+
+// ── CLEAN TEXT ──
+function clean(t) {
+  return t.replace(/\*+/g, '').replace(/`/g, '').trim();
+}
+
+// ── LOAD & INIT ──
+let graphData = null;
+let simulation = null;
+let showLabels = true;
+let activeRels = new Set(["RelatedTo","UsedFor","Requires","Produces"]);
+let selectedNode = null;
+
+fetch(DATA_URL)
+  .then(r => r.json())
+  .then(raw => {
+    graphData = processGraph(raw);
+    document.getElementById('loading').style.display = 'none';
+    updateStats();
+    renderContradictions(raw.contradictions || []);
+    buildGraph();
+    setupFilters();
+    setupSearch();
+  })
+  .catch(e => {
+    document.getElementById('loading').innerHTML =
+      `<div style="color:#ff4757;font-size:13px">Failed to load data.<br><small style="color:#5a7080">${e.message}</small></div>`;
+  });
+
+function processGraph(raw) {
+  const nodes = [];
+  const nodeIndex = {};
+  const links = [];
+  const relCounts = {RelatedTo:0, UsedFor:0, Requires:0, Produces:0};
+
+  // Build node list (clean names, deduplicate)
+  const seen = new Map();
+  for (const [name, data] of Object.entries(raw.nodes)) {
+    const cn = clean(name);
+    if (!seen.has(cn)) {
+      const node = { id: cn, depth: data.depth, relations: {}, raw: data };
+      seen.set(cn, node);
+      nodes.push(node);
+      nodeIndex[cn] = node;
+    }
+    // Store relations on node
+    for (const [rel, items] of Object.entries(data.relations)) {
+      seen.get(cn).relations[rel] = items.map(i => ({...i, text: clean(i.text)}));
+    }
+  }
+
+  // Build edges from edges list
+  for (const edge of raw.edges) {
+    const src = clean(edge.source);
+    const tgt = clean(edge.target);
+    if (nodeIndex[src] && nodeIndex[tgt] && src !== tgt) {
+      links.push({
+        source: src,
+        target: tgt,
+        relation: edge.relation,
+        confidence: edge.confidence,
+        color: REL_COLORS[edge.relation] || '#5a7080'
+      });
+      if (relCounts[edge.relation] !== undefined) relCounts[edge.relation]++;
+    }
+  }
+
+  // Update counts in sidebar
+  for (const [rel, count] of Object.entries(relCounts)) {
+    const el = document.getElementById(`count-${rel}`);
+    if (el) el.textContent = count;
+  }
+
+  return { nodes, links, nodeIndex };
+}
+
+function updateStats() {
+  const { nodes, links } = graphData;
+  document.getElementById('stats').innerHTML = `
+    <span><b>${nodes.length}</b> concepts</span>
+    <span><b>${links.length}</b> relations</span>
+    <span><b>${nodes.filter(n=>n.depth===0).length}</b> seeds</span>
+  `;
+}
+
+function renderContradictions(contras) {
+  const el = document.getElementById('contradictionsList');
+  document.getElementById('contraCount').textContent = contras.length;
+  if (!contras.length) {
+    el.innerHTML = '<div class="info-empty">None detected</div>';
+    return;
+  }
+  el.innerHTML = contras.slice(0,10).map(c => `
+    <div class="contra-item">
+      <div class="contra-concept">⚡ ${clean(c.concept)} / ${c.relation}</div>
+      <div class="contra-pair">
+        A: <span>${clean(c.statement1.text)}</span>
+        B: <span>${clean(c.statement2.text)}</span>
+        <span style="color:var(--danger)">sim: ${c.similarity.toFixed(3)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── D3 GRAPH ──
+let svgEl, g, zoomBehavior, linkSel, nodeSel;
+
+function buildGraph() {
+  const area = document.getElementById('graphArea');
+  const W = area.clientWidth;
+  const H = area.clientHeight;
+
+  svgEl = d3.select('#svg');
+  svgEl.selectAll('*').remove();
+
+  // Defs: arrowheads
+  const defs = svgEl.append('defs');
+  for (const [rel, color] of Object.entries(REL_COLORS)) {
+    defs.append('marker')
+      .attr('id', `arrow-${rel}`)
+      .attr('viewBox', '0 -4 8 8')
+      .attr('refX', 14)
+      .attr('refY', 0)
+      .attr('markerWidth', 5)
+      .attr('markerHeight', 5)
+      .attr('orient', 'auto')
+      .append('path')
+      .attr('d', 'M0,-4L8,0L0,4')
+      .attr('fill', color)
+      .attr('opacity', 0.6);
+  }
+
+  zoomBehavior = d3.zoom().scaleExtent([0.1, 4]).on('zoom', e => {
+    g.attr('transform', e.transform);
+  });
+  svgEl.call(zoomBehavior);
+
+  g = svgEl.append('g');
+
+  const { nodes, links } = getFilteredData();
+  renderGraph(nodes, links, W, H);
+}
+
+function getFilteredData() {
+  const filteredLinks = graphData.links.filter(l => activeRels.has(l.relation));
+  // Only include nodes that appear in filtered links + seed nodes
+  const usedNodes = new Set();
+  filteredLinks.forEach(l => {
+    usedNodes.add(typeof l.source === 'object' ? l.source.id : l.source);
+    usedNodes.add(typeof l.target === 'object' ? l.target.id : l.target);
+  });
+  graphData.nodes.filter(n => n.depth === 0).forEach(n => usedNodes.add(n.id));
+  const filteredNodes = graphData.nodes.filter(n => usedNodes.has(n.id));
+  return { nodes: filteredNodes, links: filteredLinks };
+}
+
+function renderGraph(nodes, links, W, H) {
+  g.selectAll('*').remove();
+
+  // Copy nodes/links to avoid mutation
+  const nodesCopy = nodes.map(n => ({...n}));
+  const linksMap = new Map(nodesCopy.map(n => [n.id, n]));
+  const linksCopy = links.map(l => ({
+    ...l,
+    source: linksMap.get(typeof l.source === 'object' ? l.source.id : l.source) || l.source,
+    target: linksMap.get(typeof l.target === 'object' ? l.target.id : l.target) || l.target,
+  })).filter(l => l.source && l.target && typeof l.source === 'object' && typeof l.target === 'object');
+
+  simulation = d3.forceSimulation(nodesCopy)
+    .force('link', d3.forceLink(linksCopy).id(d => d.id).distance(d => d.source.depth === 0 || d.target.depth === 0 ? 90 : 60).strength(0.5))
+    .force('charge', d3.forceManyBody().strength(-180))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide(20))
+    .force('x', d3.forceX(W/2).strength(0.03))
+    .force('y', d3.forceY(H/2).strength(0.03));
+
+  // Links
+  linkSel = g.append('g').selectAll('line')
+    .data(linksCopy).enter().append('line')
+    .attr('class', 'link')
+    .attr('stroke', d => d.color)
+    .attr('stroke-width', d => 0.5 + d.confidence * 1.2)
+    .attr('marker-end', d => `url(#arrow-${d.relation})`);
+
+  // Nodes
+  const nodeG = g.append('g').selectAll('g')
+    .data(nodesCopy).enter().append('g')
+    .attr('class', 'node')
+    .call(d3.drag()
+      .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+    )
+    .on('click', (e, d) => { e.stopPropagation(); selectNode(d, nodeG, linkSel); })
+    .on('mouseover', (e, d) => showTooltip(e, d))
+    .on('mouseout', hideTooltip);
+
+  nodeG.append('circle')
+    .attr('r', d => d.depth === 0 ? 12 : 7)
+    .attr('fill', d => d.depth === 0 ? 'var(--depth0)' : 'var(--depth1)')
+    .attr('fill-opacity', d => d.depth === 0 ? 0.9 : 0.7)
+    .attr('stroke', d => d.depth === 0 ? 'white' : 'transparent')
+    .attr('stroke-width', 1);
+
+  nodeG.append('text')
+    .attr('dy', d => (d.depth === 0 ? 14 : 10) + 4)
+    .attr('text-anchor', 'middle')
+    .attr('class', 'node-label')
+    .text(d => d.id.length > 22 ? d.id.slice(0,20)+'…' : d.id)
+    .style('display', showLabels ? null : 'none');
+
+  nodeSel = nodeG;
+
+  simulation.on('tick', () => {
+    linkSel
+      .attr('x1', d => d.source.x)
+      .attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x)
+      .attr('y2', d => d.target.y);
+    nodeG.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+
+  svgEl.on('click', () => clearSelection(nodeG, linkSel));
+}
+
+function selectNode(d, nodeG, linkSel) {
+  selectedNode = d.id;
+  const connected = new Set([d.id]);
+
+  linkSel.each(function(l) {
+    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+    if (sid === d.id || tid === d.id) {
+      connected.add(sid);
+      connected.add(tid);
+    }
+  });
+
+  nodeG.classed('faded', n => !connected.has(n.id));
+  linkSel.classed('faded', l => {
+    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+    return sid !== d.id && tid !== d.id;
+  });
+  linkSel.classed('highlighted', l => {
+    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+    return sid === d.id || tid === d.id;
+  });
+
+  renderInfo(d);
+}
+
+function clearSelection(nodeG, linkSel) {
+  selectedNode = null;
+  nodeG.classed('faded', false);
+  linkSel.classed('faded', false).classed('highlighted', false);
+  document.getElementById('infoPanel').innerHTML =
+    '<div class="info-empty">Click any node to explore its relations and connections.</div>';
+}
+
+function renderInfo(d) {
+  const node = graphData.nodeIndex[d.id];
+  if (!node) return;
+
+  const relColors = {
+    RelatedTo: 'var(--relation-r)',
+    UsedFor: 'var(--relation-u)',
+    Requires: 'var(--relation-req)',
+    Produces: 'var(--relation-p)'
+  };
+
+  let html = `
+    <div class="info-node-name">${d.id}</div>
+    <div class="info-depth">Depth ${d.depth} · ${d.depth===0?'Seed concept':'Expanded'}</div>
+  `;
+
+  for (const [rel, items] of Object.entries(node.relations || {})) {
+    if (!items.length) continue;
+    html += `<div class="relation-group">
+      <div class="relation-label" style="color:${relColors[rel]||'#aaa'}">${rel}</div>`;
+    items.slice(0,8).forEach(item => {
+      const w = Math.round(item.confidence * 30);
+      const fillColor = relColors[rel] || '#aaa';
+      html += `
+        <div class="relation-item" onclick="highlightNodeById('${item.text.replace(/'/g,"\\'")}')">
+          <div class="conf-bar"><div class="conf-fill" style="width:${w}px;background:${fillColor}"></div></div>
+          ${item.text}
+        </div>`;
+    });
+    html += '</div>';
+  }
+
+  document.getElementById('infoPanel').innerHTML = html;
+}
+
+function highlightNodeById(id) {
+  if (!nodeSel) return;
+  nodeSel.each(function(d) {
+    if (d.id === id) selectNode(d, nodeSel, linkSel);
+  });
+}
+
+// ── TOOLTIP ──
+const tooltip = document.getElementById('tooltip');
+
+function showTooltip(e, d) {
+  const inLinks = graphData.links.filter(l => {
+    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+    return tid === d.id;
+  }).length;
+  const outLinks = graphData.links.filter(l => {
+    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+    return sid === d.id;
+  }).length;
+  tooltip.innerHTML = `<b>${d.id}</b><br>In: ${inLinks} · Out: ${outLinks}`;
+  tooltip.style.opacity = '1';
+  tooltip.style.left = (e.layerX + 12) + 'px';
+  tooltip.style.top = (e.layerY - 10) + 'px';
+}
+
+function hideTooltip() {
+  tooltip.style.opacity = '0';
+}
+
+// ── FILTERS ──
+function setupFilters() {
+  document.querySelectorAll('[data-rel]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) activeRels.add(cb.dataset.rel);
+      else activeRels.delete(cb.dataset.rel);
+      rebuildGraph();
+    });
+  });
+}
+
+function rebuildGraph() {
+  const area = document.getElementById('graphArea');
+  buildGraph();
+}
+
+// ── SEARCH ──
+function setupSearch() {
+  document.getElementById('searchBox').addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    if (!nodeSel) return;
+    if (!q) {
+      nodeSel.classed('faded', false);
+      linkSel.classed('faded', false);
+      return;
+    }
+    nodeSel.classed('faded', d => !d.id.toLowerCase().includes(q));
+    linkSel.classed('faded', l => {
+      const sid = typeof l.source === 'object' ? l.source.id : l.source;
+      const tid = typeof l.target === 'object' ? l.target.id : l.target;
+      return !sid.toLowerCase().includes(q) && !tid.toLowerCase().includes(q);
+    });
+  });
+}
+
+// ── CONTROLS ──
+function resetZoom() {
+  svgEl.transition().duration(500).call(zoomBehavior.transform, d3.zoomIdentity);
+}
+
+function toggleLabels() {
+  showLabels = !showLabels;
+  d3.selectAll('.node-label').style('display', showLabels ? null : 'none');
+}
+</script>
+</body>
+</html>
