@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Self-affirming — Qwen Query</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,600;1,300&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:     #07090c;
+  --bg2:    #0c0f14;
+  --panel:  #10151c;
+  --border: #1a2230;
+  --text:   #c0d0e0;
+  --muted:  #4a6070;
+  --dim:    #1a2530;
+  --d0:     #e8d060;
+  --d1:     #6090c8;
+  --d2:     #8060a8;
+  --ok:     #00c8a0;
+  --axis1:  #ff5e3a;
+  --axis2:  #00c8ff;
+  --axis3:  #a8e063;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  width:100%; height:100vh; overflow:hidden;
+  background:var(--bg); color:var(--text);
+  font-family:'IBM Plex Mono', monospace;
+}
+
+/* ── HEADER ── */
+header {
+  position:fixed; top:0; left:0; right:0; height:50px;
+  display:flex; align-items:center; gap:16px;
+  padding:0 24px;
+  background:var(--bg2); border-bottom:1px solid var(--border);
+  z-index:50;
+}
+.logo { font-family:'Syne',sans-serif; font-size:15px; font-weight:800; color:var(--d0); letter-spacing:-0.3px; }
+.logo span { color:var(--text); font-weight:400; }
+.logo-sep { color:var(--border); font-size:18px; }
+
+/* model badge */
+.model-badge {
+  display:flex; align-items:center; gap:8px;
+  background:var(--panel); border:1px solid var(--border); border-radius:4px;
+  padding:4px 10px; font-size:10px;
+}
+.model-dot { width:7px; height:7px; border-radius:50%; background:var(--dim); flex-shrink:0; transition:all 0.4s; }
+.model-dot.ok  { background:var(--ok); box-shadow:0 0 8px var(--ok); }
+.model-dot.err { background:var(--axis1); }
+.model-dot.loading { background:var(--d0); animation:pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:0.3;} 50%{opacity:1;} }
+.model-name { color:var(--text); }
+.model-sub  { color:var(--muted); font-size:9px; }
+
+/* axis hint pill (right side of header) */
+.axis-pill {
+  margin-left:auto;
+  display:none; align-items:center; gap:5px;
+  padding:3px 10px; border-radius:12px; font-size:9px; font-weight:600;
+  letter-spacing:0.5px;
+}
+
+/* ── SHELL ── */
+.shell {
+  display:flex; height:calc(100vh - 50px); margin-top:50px;
+}
+
+/* ── LEFT PANEL ── */
+.left {
+  width:360px; flex-shrink:0;
+  display:flex; flex-direction:column;
+  border-right:1px solid var(--border);
+  background:var(--panel);
+}
+
+.query-section { padding:18px; border-bottom:1px solid var(--border); }
+.sec-lbl {
+  font-size:9px; letter-spacing:2px; text-transform:uppercase;
+  color:var(--muted); margin-bottom:8px;
+}
+textarea {
+  width:100%; background:var(--bg); border:1px solid var(--border);
+  border-radius:3px; padding:10px 12px;
+  font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--text);
+  outline:none; resize:none; line-height:1.6;
+  transition:border-color 0.2s;
+}
+textarea:focus { border-color:var(--d0); }
+textarea::placeholder { color:var(--muted); }
+
+.btn-row { display:flex; gap:8px; margin-top:10px; align-items:center; }
+.ask {
+  flex:1; padding:9px; background:var(--d0); border:none; border-radius:3px;
+  font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600;
+  color:var(--bg); cursor:pointer; letter-spacing:0.5px;
+  transition:opacity 0.15s;
+}
+.ask:not(:disabled):hover { opacity:0.85; }
+.ask:disabled { opacity:0.35; cursor:default; }
+select {
+  background:var(--bg); border:1px solid var(--border); border-radius:3px;
+  color:var(--muted); font-family:'IBM Plex Mono',monospace;
+  font-size:10px; padding:8px 6px; outline:none;
+}
+
+/* examples */
+.examples { padding:14px 18px; border-bottom:1px solid var(--border); }
+.ex {
+  font-size:10px; color:var(--muted); padding:6px 0;
+  border-bottom:1px solid var(--dim); cursor:pointer;
+  transition:color 0.15s; line-height:1.4;
+}
+.ex:last-child { border-bottom:none; }
+.ex:hover { color:var(--d0); }
+.ex::before { content:'→ '; color:var(--border); }
+.ex:hover::before { color:var(--d0); }
+
+/* retrieved results */
+.results {
+  flex:1; overflow-y:auto; padding:14px 18px;
+  scrollbar-width:thin; scrollbar-color:var(--border) transparent;
+}
+.chip {
+  display:flex; align-items:center; gap:8px;
+  padding:6px 9px; margin-bottom:4px;
+  border-radius:3px; background:var(--bg2); border:1px solid var(--border);
+  font-size:10px; cursor:default;
+}
+.chip-rank { font-size:9px; color:var(--muted); width:14px; flex-shrink:0; }
+.chip-name { flex:1; color:var(--text); }
+.chip-score { font-size:9px; color:var(--muted); }
+.chip-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+
+.t-chip {
+  padding:7px 9px; margin-bottom:5px; border-radius:3px;
+  border-left:3px solid; font-size:10px; line-height:1.6;
+}
+.t-chip-type { font-size:8px; letter-spacing:1.5px; text-transform:uppercase; font-weight:600; margin-bottom:2px; }
+.t-chip-pair { color:var(--text); }
+.t-chip-via  { color:var(--muted); font-size:9px; font-style:italic; }
+
+/* ── RIGHT PANEL ── */
+.right { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+
+.answer-bar {
+  padding:10px 24px; border-bottom:1px solid var(--border);
+  background:var(--bg2); display:flex; align-items:center; gap:10px; min-height:42px;
+}
+.answer-q { flex:1; font-size:11px; color:var(--muted); font-style:italic; }
+.answer-q.live { color:var(--text); }
+.answer-timing { font-size:9px; color:var(--muted); }
+
+.answer-area {
+  flex:1; overflow-y:auto; padding:28px 32px;
+  scrollbar-width:thin; scrollbar-color:var(--border) transparent;
+}
+
+/* empty state */
+.empty {
+  height:100%; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:14px; color:var(--muted); font-size:11px; text-align:center; line-height:2;
+}
+.empty-icon { font-size:36px; opacity:0.1; }
+.empty-hint { font-size:9px; color:var(--border); margin-top:6px; }
+
+/* pipeline */
+.pipe {
+  display:flex; align-items:center; flex-wrap:wrap;
+  gap:3px; margin-bottom:20px; font-size:9px; letter-spacing:1px; text-transform:uppercase;
+}
+.ps {
+  padding:4px 10px; border-radius:3px;
+  background:var(--bg2); border:1px solid var(--border); color:var(--muted);
+  transition:all 0.3s;
+}
+.ps.active { color:var(--d0); border-color:var(--d0); background:rgba(232,208,96,0.05); }
+.ps.done   { color:var(--ok); border-color:rgba(0,200,160,0.25); }
+.pa { color:var(--dim); }
+
+/* answer text */
+.answer-text {
+  font-family:'IBM Plex Mono',monospace; font-size:12px;
+  line-height:1.9; color:var(--text); max-width:700px;
+}
+.answer-text p { margin-bottom:14px; }
+.hl { display:inline; padding:0 3px; border-radius:2px; font-weight:600; }
+
+/* generating indicator */
+.generating {
+  display:flex; align-items:center; gap:10px;
+  font-size:10px; color:var(--muted); padding:8px 0;
+}
+.gen-bar {
+  width:120px; height:2px; background:var(--dim); border-radius:1px; overflow:hidden;
+}
+.gen-fill {
+  height:100%; background:var(--d0); border-radius:1px;
+  animation:genflow 1.8s ease-in-out infinite;
+}
+@keyframes genflow { 0%{width:0%;margin-left:0;} 50%{width:60%;margin-left:20%;} 100%{width:0%;margin-left:100%;} }
+
+@keyframes blink { 50%{opacity:0;} }
+.cursor {
+  display:inline-block; width:7px; height:13px;
+  background:var(--d0); margin-left:2px; vertical-align:middle;
+  animation:blink 0.8s step-end infinite;
+}
+
+/* qwen warning if offline */
+.offline-hint {
+  background:rgba(255,94,58,0.06); border:1px solid rgba(255,94,58,0.25);
+  border-radius:4px; padding:14px 16px; font-size:10px; line-height:1.9;
+  color:var(--text); max-width:500px; margin-top:8px;
+}
+.offline-hint code { color:var(--d0); }
+.offline-hint .warn { color:var(--axis1); font-size:9px; letter-spacing:1px; text-transform:uppercase; font-weight:600; margin-bottom:6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Self-affirming <span>— Query</span></div>
+  <span class="logo-sep">|</span>
+  <div class="model-badge">
+    <div class="model-dot" id="mdot"></div>
+    <div>
+      <div class="model-name" id="mname">Qwen2.5-Coder-7B</div>
+      <div class="model-sub" id="msub">connecting to localhost:5100…</div>
+    </div>
+  </div>
+  <div class="axis-pill" id="axisPill"></div>
+</header>
+
+<div class="shell">
+
+  <!-- LEFT -->
+  <div class="left">
+    <div class="query-section">
+      <div class="sec-lbl">Ask the Knowledge Graph</div>
+      <textarea id="qbox" rows="3"
+        placeholder="e.g. How is LR parsing different from LL parsing?"></textarea>
+      <div class="btn-row">
+        <button class="ask" id="askBtn" onclick="run()">Ask →</button>
+        <select id="topk" title="Number of concepts to retrieve">
+          <option value="5">top 5</option>
+          <option value="8" selected>top 8</option>
+          <option value="12">top 12</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="examples">
+      <div class="sec-lbl">Example Queries</div>
+      <div class="ex" onclick="pick(this)">How is LR parsing different from LL parsing?</div>
+      <div class="ex" onclick="pick(this)">What is the difference between syntax errors and semantic errors?</div>
+      <div class="ex" onclick="pick(this)">Why does LR parsing conflict with parallelization?</div>
+      <div class="ex" onclick="pick(this)">When does compile-time structure fail at runtime?</div>
+      <div class="ex" onclick="pick(this)">How does register allocation relate to parsing strategies?</div>
+      <div class="ex" onclick="pick(this)">What tensions exist in intermediate code generation?</div>
+      <div class="ex" onclick="pick(this)">How does backtracking relate to error recovery?</div>
+    </div>
+
+    <div class="results" id="results">
+      <div class="sec-lbl">Retrieved Concepts</div>
+      <div style="font-size:10px;color:var(--muted);font-style:italic;margin-top:4px">
+        Will appear after first query.
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="right">
+    <div class="answer-bar">
+      <div class="answer-q" id="answerQ">No query yet — ask something</div>
+      <div class="answer-timing" id="answerTiming"></div>
+    </div>
+    <div class="answer-area" id="answerArea">
+      <div class="empty">
+        <div class="empty-icon">⟷</div>
+        <div>
+          Qwen2.5-Coder-7B is loaded locally.<br>
+          It reasons over the compiler knowledge graph<br>
+          it helped build — a self-affirming loop.
+        </div>
+        <div class="empty-hint">Shift+Enter for newline · Enter to submit</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const SERVER = 'http://localhost:5100';
+const D_COL  = ['#e8d060','#6090c8','#8060a8'];
+const A_COL  = {1:'#ff5e3a', 2:'#00c8ff', 3:'#a8e063'};
+const A_LBL  = {1:'Compile-time ↔ Runtime', 2:'Sequential ↔ Parallel', 3:'Syntax ↔ Semantics'};
+
+// ── SERVER CHECK ─────────────────────────────────────────────
+async function checkServer() {
+  const dot  = document.getElementById('mdot');
+  const name = document.getElementById('mname');
+  const sub  = document.getElementById('msub');
+  try {
+    const r = await fetch(SERVER+'/health', {signal:AbortSignal.timeout(2500)});
+    const d = await r.json();
+    dot.className  = 'model-dot ok';
+    name.textContent = d.model ? d.model.split('/')[1] : 'Qwen2.5-Coder-7B';
+    sub.textContent  = `${d.device||'mps'} · ${d.concepts} concepts · ready`;
+  } catch {
+    dot.className  = 'model-dot err';
+    sub.textContent = 'offline — run query_server_qwen.py';
+  }
+}
+checkServer();
+setInterval(checkServer, 8000);
+
+// ── HELPERS ──────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const pick = el => { $('qbox').value = el.textContent.replace(/^→ /,'').trim(); $('qbox').focus(); };
+
+function busy(b) {
+  $('askBtn').disabled = b;
+  $('askBtn').textContent = b ? 'generating… (~15s)' : 'Ask →';
+}
+
+function pipe(active, done=[]) {
+  const steps = ['retrieve','build context','generate','done'];
+  return '<div class="pipe">' + steps.map((s,i) => `
+    <div class="ps ${done.includes(i)?'done':active===i?'active':''}">${s}</div>
+    ${i < steps.length-1 ? '<span class="pa">→</span>' : ''}
+  `).join('') + '</div>';
+}
+
+// ── RENDER LEFT PANEL ────────────────────────────────────────
+function renderResults(concepts, tensions) {
+  let h = `<div class="sec-lbl">Concepts (${concepts.length})</div>`;
+  concepts.forEach((c,i) => {
+    const col = D_COL[Math.min(c.depth||0, 2)];
+    const stage = c.stage !== null && c.stage !== undefined ? `s${c.stage}` : '';
+    h += `<div class="chip">
+      <span class="chip-rank">${i+1}</span>
+      <span class="chip-name">${c.concept}</span>
+      <span class="chip-score">${c.score.toFixed(3)}</span>
+      ${stage ? `<span style="font-size:8px;color:var(--muted);background:var(--dim);padding:1px 4px;border-radius:2px">${stage}</span>` : ''}
+      <div class="chip-dot" style="background:${col}"></div>
+    </div>`;
+  });
+
+  const co = tensions.filter(t => t.dialectical_type === 'COMPLEMENTARY_OPPOSITES');
+  const rest = tensions.filter(t => t.dialectical_type !== 'COMPLEMENTARY_OPPOSITES');
+
+  if (co.length) {
+    h += `<div class="sec-lbl" style="margin-top:14px;color:var(--d0)">★ Complementary Opposites</div>`;
+    co.forEach(t => {
+      const col = A_COL[t.axis]||'#aaa';
+      const via = (t.shared_neighbors||[]).slice(0,2).join(', ');
+      h += `<div class="t-chip" style="background:${col}15;border-left-color:${col}">
+        <div class="t-chip-type" style="color:${col}">${A_LBL[t.axis]||''}</div>
+        <div class="t-chip-pair">★ ${t.concept_a} ⟷ ${t.concept_b}</div>
+        ${via ? `<div class="t-chip-via">via: ${via}</div>` : ''}
+      </div>`;
+    });
+  }
+  if (rest.length) {
+    h += `<div class="sec-lbl" style="margin-top:12px">Other Tensions (${rest.length})</div>`;
+    rest.slice(0,5).forEach(t => {
+      const col = A_COL[t.axis]||'#aaa';
+      const via = (t.shared_neighbors||[]).slice(0,2).join(', ');
+      h += `<div class="t-chip" style="background:${col}0d;border-left-color:${col}">
+        <div class="t-chip-type" style="color:${col}">${A_LBL[t.axis]||''}</div>
+        <div class="t-chip-pair">${t.concept_a} ⟷ ${t.concept_b}</div>
+        ${via ? `<div class="t-chip-via">via: ${via}</div>` : ''}
+      </div>`;
+    });
+  }
+  $('results').innerHTML = h;
+}
+
+// ── HIGHLIGHT AXIS KEYWORDS IN ANSWER ────────────────────────
+function render(text) {
+  const kws = [
+    [/\b(compile.time|parse.time)\b/gi, 'axis1'],
+    [/\b(runtime|run.time)\b/gi,        'axis1'],
+    [/\b(sequential|deterministic)\b/gi,'axis2'],
+    [/\b(parallel\w*|concurrent\w*)\b/gi,'axis2'],
+    [/\b(syntax)\b/gi,                  'axis3'],
+    [/\b(semantic\w*)\b/gi,             'axis3'],
+  ];
+  const cols = {axis1:'#ff5e3a', axis2:'#00c8ff', axis3:'#a8e063'};
+
+  let s = text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\n\n+/g, '§§').replace(/\n/g, '<br>')
+    .replace(/§§/g, '</p><p>');
+
+  kws.forEach(([re, cls]) => {
+    s = s.replace(re,
+      `<span class="hl" style="background:${cols[cls]}22;color:${cols[cls]}">$1</span>`);
+  });
+  return `<p>${s}</p>`;
+}
+
+// ── AXIS PILL ────────────────────────────────────────────────
+function showAxisPill(axis, label) {
+  const pill = $('axisPill');
+  if (!axis || !label) { pill.style.display='none'; return; }
+  const col = A_COL[axis]||'#aaa';
+  pill.style.cssText = `display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:12px;font-size:9px;font-weight:600;letter-spacing:0.5px;background:${col}20;color:${col};border:1px solid ${col}50;margin-left:auto;`;
+  pill.textContent = 'axis: ' + label;
+}
+
+// ── MAIN QUERY ───────────────────────────────────────────────
+async function run() {
+  const q = $('qbox').value.trim();
+  if (!q) return;
+
+  const topk = parseInt($('topk').value);
+  const t0   = Date.now();
+
+  busy(true);
+  $('answerQ').textContent = q;
+  $('answerQ').className   = 'answer-q live';
+  $('answerTiming').textContent = '';
+  $('axisPill').style.display = 'none';
+  $('answerArea').innerHTML = pipe(0);
+
+  try {
+    const resp = await fetch(SERVER+'/query', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({query:q, top_k:topk})
+    });
+
+    if (!resp.ok) throw new Error(`Server ${resp.status}`);
+
+    const reader = resp.body.getReader();
+    const dec    = new TextDecoder();
+    let textEl   = null;
+    let fullText = '';
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+
+      for (const line of dec.decode(value).split('\n')) {
+        if (!line.startsWith('data:')) continue;
+        let ev;
+        try { ev = JSON.parse(line.slice(5).trim()); } catch { continue; }
+
+        if (ev.type === 'meta') {
+          renderResults(ev.data.top_concepts, ev.data.tensions);
+          showAxisPill(ev.data.primary_axis, ev.data.primary_axis_label);
+          $('answerArea').innerHTML = pipe(2,[0,1]) +
+            `<div class="generating">
+              <div class="gen-bar"><div class="gen-fill"></div></div>
+              Qwen generating…
+            </div>`;
+        }
+        else if (ev.type === 'text') {
+          if (!textEl) {
+            $('answerArea').innerHTML = pipe(3,[0,1,2]) +
+              `<div class="answer-text" id="streamEl"></div>`;
+            textEl = $('streamEl');
+          }
+          fullText += ev.text;
+          textEl.innerHTML = render(fullText) + '<span class="cursor"></span>';
+          $('answerArea').scrollTop = $('answerArea').scrollHeight;
+        }
+        else if (ev.type === 'done') {
+          if (textEl) textEl.innerHTML = render(fullText);
+          $('answerTiming').textContent = ((Date.now()-t0)/1000).toFixed(1)+'s';
+        }
+        else if (ev.type === 'error') {
+          $('answerArea').innerHTML =
+            `<div style="color:var(--axis1);font-size:11px">${ev.message}</div>`;
+        }
+      }
+    }
+  } catch(e) {
+    $('answerArea').innerHTML = `
+      <div class="offline-hint">
+        <div class="warn">⚠ Cannot reach server</div>
+        ${e.message}<br><br>
+        Start the Qwen server:<br>
+        <code>cd ~/dialectical-comet</code><br>
+        <code>python scripts/query_server_qwen.py</code><br><br>
+        (Model loads once, ~30s on M4)
+      </div>`;
+  } finally {
+    busy(false);
+  }
+}
+
+$('qbox').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); run(); }
+});
+</script>
+</body>
+</html>
